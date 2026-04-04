@@ -1149,11 +1149,11 @@
     <div id="bottom-panels">
         <!-- Memo 面板 -->
         <div id="memo-panel">
-            <div id="memo-title">昨 日 小 记</div>
+            <div id="memo-title"></div>
             <div id="memo-date"></div>
             <div class="memo-decoration">─ ─ ─ ─ ─</div>
             <div id="memo-content">
-                <div id="memo-placeholder">加载中...</div>
+                <div id="memo-placeholder"></div>
             </div>
             <div class="memo-decoration">─ ─ ─ ─ ─</div>
         </div>
@@ -1174,7 +1174,7 @@
         <div id="guest-agent-panel">
             <div id="guest-agent-panel-title">访 客 列 表</div>
             <div id="guest-agent-list">
-                <div style="color:#9ca3af;font-size:12px;text-align:center;padding:20px 0;">正在加载访客...</div>
+                <div id="visitor-loading-text" style="color:#9ca3af;font-size:12px;text-align:center;padding:20px 0;"></div>
             </div>
             </div>
         </div>
@@ -1318,7 +1318,10 @@
                 assetHintDefault: '通用素材：建议保持原图尺寸、透明通道与视觉重心一致，避免错位或失真',
                 showCoords: '显示坐标', hideCoords: '隐藏坐标', moveView: '移动视野', lockView: '锁定视野',
                 memoTitle: '昨 日 小 记', guestTitle: '访 客 列 表', officeTitle: '海辛小龙虾的办公室',
-                loadingOffice: '正在加载 Star 的像素办公室...'
+                loadingOffice: '正在加载 Star 的像素办公室...',
+                noMemo: '暂无昨日日记', memoLoadFail: '加载失败', loadingVisitors: '正在加载访客...', noVisitors: '暂无访客', unnamedVisitor: '未命名访客', visitor: '访客',
+                visitorApproved: '已批准该访客接入', visitorRejected: '已拒绝该访客',
+                loadingText: '加载中...'
             },
             en: {
                 controlTitle: 'Star Status',
@@ -1345,8 +1348,11 @@
                 assetHintNotInScene: 'This object is not detected in current scene; you can still replace file (effective after refresh)',
                 assetHintDefault: 'Generic asset: keep source size, alpha channel, and visual anchor to avoid drift/distortion',
                 showCoords: 'Show Coords', hideCoords: 'Hide Coords', moveView: 'Pan View', lockView: 'Lock View',
-                memoTitle: 'YESTERDAY NOTES', guestTitle: 'VISITOR LIST', officeTitle: 'Haixin Lobster Office',
-                loadingOffice: 'Loading Star’s pixel office...'
+                memoTitle: ‘YESTERDAY NOTES’, guestTitle: ‘VISITOR LIST’, officeTitle: ‘Hermes Agent Office’,
+                loadingOffice: ‘Loading pixel office...’,
+                noMemo: ‘No notes from yesterday’, memoLoadFail: ‘Failed to load’, loadingVisitors: ‘Loading visitors...’, noVisitors: ‘No visitors’, unnamedVisitor: ‘Unnamed visitor’, visitor: ‘Visitor’,
+                visitorApproved: ‘Visitor approved’, visitorRejected: ‘Visitor rejected’,
+                loadingText: ‘Loading...’
             },
             ja: {
                 controlTitle: 'Star ステータス',
@@ -1373,8 +1379,11 @@
                 assetHintNotInScene: '現在のシーンでこのオブジェクトは未検出です。ファイル差し替えは可能（更新後に反映）',
                 assetHintDefault: '汎用素材：元サイズ・透過・視覚アンカーを維持し、ズレや崩れを防いでください',
                 showCoords: '座標表示', hideCoords: '座標非表示', moveView: '視点移動', lockView: '視点固定',
-                memoTitle: '昨日のメモ', guestTitle: '訪問者リスト', officeTitle: 'ハイシン・ロブスターのオフィス',
-                loadingOffice: 'Star のピクセルオフィスを読み込み中...'
+                memoTitle: '昨日のメモ', guestTitle: '訪問者リスト', officeTitle: 'Hermes Agent オフィス',
+                loadingOffice: 'ピクセルオフィスを読み込み中...',
+                noMemo: '昨日のメモはありません', memoLoadFail: '読み込み失敗', loadingVisitors: '訪問者を読み込み中...', noVisitors: '訪問者なし', unnamedVisitor: '名前なし訪問者', visitor: '訪問者',
+                visitorApproved: '訪問者を承認しました', visitorRejected: '訪問者を拒否しました',
+                loadingText: '読み込み中...'
             }
         };
 
@@ -1457,6 +1466,10 @@
 
             const memoTitle = document.getElementById('memo-title');
             if (memoTitle) memoTitle.textContent = t('memoTitle');
+            const memoPlaceholder = document.getElementById('memo-placeholder');
+            if (memoPlaceholder && !memoPlaceholder.dataset.loaded) memoPlaceholder.textContent = t('loadingText');
+            const visitorLoading = document.getElementById('visitor-loading-text');
+            if (visitorLoading) visitorLoading.textContent = t('loadingVisitors');
             const guestTitle = document.getElementById('guest-agent-panel-title');
             if (guestTitle) guestTitle.textContent = t('guestTitle');
             const plaqueTitle = (typeof window.officeNameFromServer !== 'undefined' && window.officeNameFromServer) || t('officeTitle');
@@ -1559,11 +1572,11 @@
                     memoDate.textContent = data.date || '';
                     memoContent.innerHTML = data.memo.replace(/\n/g, '<br>');
                 } else {
-                    memoContent.innerHTML = '<div id="memo-placeholder">暂无昨日日记</div>';
+                    memoContent.innerHTML = '<div id="memo-placeholder">' + t('noMemo') + '</div>';
                 }
             } catch (e) {
                 console.error('加载 memo 失败:', e);
-                memoContent.innerHTML = '<div id="memo-placeholder">加载失败</div>';
+                memoContent.innerHTML = '<div id="memo-placeholder">' + t('memoLoadFail') + '</div>';
             }
         }
 
@@ -3373,7 +3386,7 @@ function toggleBrokerPanel() {
             }).then(response => response.json()).then(data => {
                 if (data.ok) {
                     fetchGuestAgents();
-                    alert('已批准该访客接入');
+                    alert(t('visitorApproved'));
                 } else {
                     alert('批准失败：' + (data.msg || '未知错误'));
                 }
@@ -3390,7 +3403,7 @@ function toggleBrokerPanel() {
             }).then(response => response.json()).then(data => {
                 if (data.ok) {
                     fetchGuestAgents();
-                    alert('已拒绝该访客');
+                    alert(t('visitorRejected'));
                 } else {
                     alert('拒绝失败：' + (data.msg || '未知错误'));
                 }
@@ -3424,12 +3437,12 @@ function toggleBrokerPanel() {
 
             const visitors = getMergedVisitors();
             if (visitors.length === 0) {
-                list.innerHTML = '<div style="color:#9ca3af;font-size:12px;text-align:center;padding:20px 0;">暂无访客</div>';
+                list.innerHTML = '<div style="color:#9ca3af;font-size:12px;text-align:center;padding:20px 0;">' + t('noVisitors') + '</div>';
                 return;
             }
 
             list.innerHTML = visitors.map(agent => {
-                const name = agent.name || '未命名访客';
+                const name = agent.name || t('unnamedVisitor');
                 const authStatus = agent.authStatus || 'pending';
                 const state = agent.state || 'idle';
                 const statusMap = {
@@ -3600,7 +3613,7 @@ function toggleBrokerPanel() {
                     const yOffset = (DEMO_MODE && (agent.agentId === 'demo_mercury' || agent.name === '水星')) ? 10 : 0;
 
                     const nameTextY = isDemo ? ((p.y + yOffset) - 80) : ((p.y + yOffset) - 120);
-                    const nameText = game.add.text(p.x, nameTextY, agent.name || '访客', {
+                    const nameText = game.add.text(p.x, nameTextY, agent.name || t('visitor'), {
                         fontFamily: 'ArkPixel, monospace',
                         fontSize: isDemo ? '16px' : '15px',
                         fill: '#ffffff',
@@ -3649,7 +3662,7 @@ function toggleBrokerPanel() {
                         g.nameText.y = (p.y + yOffset) - 120;
                     }
 
-                    g.nameText.setText(agent.name || '访客');
+                    g.nameText.setText(agent.name || t('visitor'));
                 }
             });
 

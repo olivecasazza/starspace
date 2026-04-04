@@ -36,43 +36,107 @@ SCAN_FILES = [
     BACKEND / "memo_utils.py",
 ]
 
-# Regex to match Chinese character runs (with surrounding punctuation/mixed text)
-CHINESE_RE = re.compile(r'[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef][\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\w\s\d.,!?;:\-\'"()/\\%#@&*+=<>{}[\]|~`\u2026\u2014\u2018\u2019\u201c\u201d]*')
+# Match runs of Chinese characters with interspersed punctuation, spaces, digits
+# but NOT HTML tags, attributes, or code
+CHINESE_RE = re.compile(
+    r'[\u4e00-\u9fff]'                          # starts with Chinese char
+    r'[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef' # Chinese + CJK punctuation
+    r'\w\s\d.,!?;:\-\'\"()/\\%\u2026\u2014\u2018\u2019\u201c\u201d]*'
+)
+
+# Patterns to extract text from HTML
+HTML_TEXT_RE = re.compile(r'>([^<]+)<')  # text between tags
+HTML_ATTR_RE = re.compile(r'(?:title|placeholder|alt|aria-label|data-tooltip)\s*=\s*["\']([^"\']+)["\']')
+
+# JS string patterns
+JS_STRING_RE = re.compile(r'''(?:['"`])([^'"`\n]+)(?:['"`])''')
 
 
-def make_key(text: str, filepath: str) -> str:
+def make_key(text: str, filepath: str, idx: int) -> str:
     """Generate a stable key from the text and source file."""
-    # Use first 40 chars of text + hash for uniqueness
     prefix = Path(filepath).stem.replace("-", "_").replace(".", "_")
-    short = text[:30].strip()
-    # Create a short hash for uniqueness
-    h = hashlib.md5(text.encode()).hexdigest()[:6]
-    # Sanitize for use as JSON key
-    key = re.sub(r'[^\w]', '_', short)
-    key = re.sub(r'_+', '_', key).strip('_')
-    return f"{prefix}.{key}_{h}"
+    h = hashlib.md5(text.encode()).hexdigest()[:8]
+    return f"{prefix}.{h}"
 
 
-def extract_from_file(filepath: Path) -> dict:
-    """Extract Chinese strings from a file."""
+def has_chinese(text: str) -> bool:
+    """Check if text contains Chinese characters."""
+    return bool(re.search(r'[\u4e00-\u9fff]', text))
+
+
+def clean_text(text: str) -> str:
+    """Clean extracted text."""
+    text = text.strip()
+    # Remove leading/trailing punctuation that isn't Chinese
+    text = re.sub(r'^[\s\-:;,./\\|]+', '', text)
+    text = re.sub(r'[\s\-:;,./\\|]+$', '', text)
+    return text.strip()
+
+
+def extract_chinese_phrases(text: str) -> list:
+    """Extract clean Chinese phrases from a text block."""
+    results = []
+    for m in CHINESE_RE.finditer(text):
+        phrase = clean_text(m.group())
+        if len(phrase) >= 2 and has_chinese(phrase):
+            results.append(phrase)
+    return results
+
+
+def extract_from_html(filepath: Path) -> OrderedDict:
+    """Extract Chinese strings from HTML file."""
     strings = OrderedDict()
-    try:
-        content = filepath.read_text(encoding="utf-8")
-    except Exception as e:
-        print(f"  Skip {filepath}: {e}")
-        return strings
+    content = filepath.read_text(encoding="utf-8")
 
-    for match in CHINESE_RE.finditer(content):
-        text = match.group().strip()
-        # Skip very short strings (single chars that are likely punctuation)
-        if len(text) < 2:
-            continue
-        # Skip strings that are just comments
-        if text.startswith("//") or text.startswith("#"):
-            continue
-        key = make_key(text, str(filepath))
-        if key not in strings:
-            strings[key] = text
+    # Extract text content between HTML tags
+    for m in HTML_TEXT_RE.finditer(content):
+        text = m.group(1)
+        for phrase in extract_chinese_phrases(text):
+            key = make_key(phrase, str(filepath), len(strings))
+            strings[key] = phrase
+
+    # Extract from HTML attributes
+    for m in HTML_ATTR_RE.finditer(content):
+        text = m.group(1)
+        for phrase in extract_chinese_phrases(text):
+            key = make_key(phrase, str(filepath), len(strings))
+            strings[key] = phrase
+
+    return strings
+
+
+def extract_from_js(filepath: Path) -> OrderedDict:
+    """Extract Chinese strings from JS file."""
+    strings = OrderedDict()
+    content = filepath.read_text(encoding="utf-8")
+
+    # Get strings from JS string literals
+    for m in JS_STRING_RE.finditer(content):
+        text = m.group(1)
+        for phrase in extract_chinese_phrases(text):
+            key = make_key(phrase, str(filepath), len(strings))
+            strings[key] = phrase
+
+    # Also check comments and template literals for Chinese
+    for line in content.split('\n'):
+        for phrase in extract_chinese_phrases(line):
+            key = make_key(phrase, str(filepath), len(strings))
+            if key not in strings:
+                strings[key] = phrase
+
+    return strings
+
+
+def extract_from_python(filepath: Path) -> OrderedDict:
+    """Extract Chinese strings from Python file."""
+    strings = OrderedDict()
+    content = filepath.read_text(encoding="utf-8")
+
+    for m in JS_STRING_RE.finditer(content):
+        text = m.group(1)
+        for phrase in extract_chinese_phrases(text):
+            key = make_key(phrase, str(filepath), len(strings))
+            strings[key] = phrase
 
     return strings
 
@@ -84,14 +148,29 @@ def main():
         if not filepath.exists():
             print(f"  Skip (not found): {filepath}")
             continue
-        print(f"  Scanning: {filepath.relative_to(ROOT)}")
-        file_strings = extract_from_file(filepath)
-        all_strings.update(file_strings)
-        print(f"    Found {len(file_strings)} strings")
+
+        rel = filepath.relative_to(ROOT)
+        suffix = filepath.suffix
+
+        if suffix == '.html':
+            file_strings = extract_from_html(filepath)
+        elif suffix == '.js':
+            file_strings = extract_from_js(filepath)
+        elif suffix == '.py':
+            file_strings = extract_from_python(filepath)
+        else:
+            continue
+
+        # Deduplicate within file
+        for k, v in file_strings.items():
+            if v not in all_strings.values():
+                all_strings[k] = v
+
+        print(f"  {rel}: {len(file_strings)} raw, {len([v for v in file_strings.values() if v not in list(all_strings.values())[:len(all_strings)-len(file_strings)]])} new")
 
     print(f"\nTotal unique strings: {len(all_strings)}")
 
-    # Write zh.json (source of truth)
+    # Write zh.json
     locales_dir = FRONTEND / "locales"
     locales_dir.mkdir(exist_ok=True)
 
@@ -102,7 +181,7 @@ def main():
     )
     print(f"Wrote {zh_path.relative_to(ROOT)}")
 
-    # Write en.json and ja.json stubs (keys only, empty values)
+    # Write en.json and ja.json stubs
     for lang in ("en", "ja"):
         lang_path = locales_dir / f"{lang}.json"
         stubs = OrderedDict((k, "") for k in all_strings)

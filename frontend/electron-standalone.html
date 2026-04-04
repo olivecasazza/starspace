@@ -1795,6 +1795,8 @@
                 showCoords: '显示坐标', hideCoords: '隐藏坐标', moveView: '移动视野', lockView: '锁定视野',
                 memoTitle: '昨 日 小 记', guestTitle: '访 客 列 表', officeTitle: '海辛小龙虾的办公室',
                 loadingOffice: '正在加载 Star 的像素办公室...',
+                noMemo: '暂无昨日日记', memoLoadFail: '加载失败', loadingVisitors: '正在加载访客...', noVisitors: '暂无访客', unnamedVisitor: '未命名访客', visitor: '访客',
+                visitorApproved: '已批准该访客接入', visitorRejected: '已拒绝该访客',
                 panelExpand: '展开', panelCollapse: '收起',
                 hiddenTag: '已隐藏', assetListLoaded: '已加载资产', sceneCaptured: '场景抓取', assetListLoadFailed: '资产加载失败，请点“刷新”重试',
                 authNeedInput: '请输入验证码', authPassOk: '验证通过', authPassWrong: '验证码错误',
@@ -1827,7 +1829,9 @@
                 assetHintNotInScene: 'This object is not detected in current scene; you can still replace file (effective after refresh)',
                 assetHintDefault: 'Generic asset: keep source size, alpha channel, and visual anchor to avoid drift/distortion',
                 showCoords: 'Show Coords', hideCoords: 'Hide Coords', moveView: 'Pan View', lockView: 'Lock View',
-                memoTitle: 'YESTERDAY NOTES', guestTitle: 'VISITOR LIST', officeTitle: 'Haixin Lobster Office',
+                memoTitle: 'YESTERDAY NOTES', guestTitle: 'VISITOR LIST', officeTitle: 'Hermes Agent Office',
+                noMemo: 'No notes from yesterday', memoLoadFail: 'Failed to load', loadingVisitors: 'Loading visitors...', noVisitors: 'No visitors', unnamedVisitor: 'Unnamed visitor', visitor: 'Visitor',
+                visitorApproved: 'Visitor approved', visitorRejected: 'Visitor rejected',
                 loadingOffice: 'Loading Star’s pixel office...',
                 panelExpand: 'Expand', panelCollapse: 'Collapse',
                 hiddenTag: 'Hidden', assetListLoaded: 'Assets loaded', sceneCaptured: 'Scene captured', assetListLoadFailed: 'Failed to load assets. Click Refresh and retry',
@@ -1861,7 +1865,9 @@
                 assetHintNotInScene: '現在のシーンでこのオブジェクトは未検出です。ファイル差し替えは可能（更新後に反映）',
                 assetHintDefault: '汎用素材：元サイズ・透過・視覚アンカーを維持し、ズレや崩れを防いでください',
                 showCoords: '座標表示', hideCoords: '座標非表示', moveView: '視点移動', lockView: '視点固定',
-                memoTitle: '昨日のメモ', guestTitle: '訪問者リスト', officeTitle: 'ハイシン・ロブスターのオフィス',
+                memoTitle: '昨日のメモ', guestTitle: '訪問者リスト', officeTitle: 'Hermes Agent オフィス',
+                noMemo: '昨日のメモはありません', memoLoadFail: '読み込み失敗', loadingVisitors: '訪問者を読み込み中...', noVisitors: '訪問者なし', unnamedVisitor: '名前なし訪問者', visitor: '訪問者',
+                visitorApproved: '訪問者を承認しました', visitorRejected: '訪問者を拒否しました',
                 loadingOffice: 'Star のピクセルオフィスを読み込み中...',
                 panelExpand: '展開', panelCollapse: '折りたたむ',
                 hiddenTag: '非表示', assetListLoaded: 'アセット読み込み', sceneCaptured: 'シーン取得', assetListLoadFailed: 'アセット読み込み失敗。更新して再試行してください',
@@ -2379,11 +2385,11 @@
                     memoDate.textContent = data.date || '';
                     memoContent.innerHTML = data.memo.replace(/\n/g, '<br>');
                 } else {
-                    memoContent.innerHTML = '<div id="memo-placeholder">暂无昨日日记</div>';
+                    memoContent.innerHTML = '<div id="memo-placeholder">' + t('noMemo') + '</div>';
                 }
             } catch (e) {
                 console.error('加载 memo 失败:', e);
-                memoContent.innerHTML = '<div id="memo-placeholder">加载失败</div>';
+                memoContent.innerHTML = '<div id="memo-placeholder">' + t('memoLoadFail') + '</div>';
             }
         }
 
@@ -4285,7 +4291,7 @@ function toggleBrokerPanel() {
             }).then(response => response.json()).then(data => {
                 if (data.ok) {
                     fetchGuestAgents();
-                    alert('已批准该访客接入');
+                    alert(t('visitorApproved'));
                 } else {
                     alert('批准失败：' + (data.msg || '未知错误'));
                 }
@@ -4302,7 +4308,7 @@ function toggleBrokerPanel() {
             }).then(response => response.json()).then(data => {
                 if (data.ok) {
                     fetchGuestAgents();
-                    alert('已拒绝该访客');
+                    alert(t('visitorRejected'));
                 } else {
                     alert('拒绝失败：' + (data.msg || '未知错误'));
                 }
@@ -4336,12 +4342,12 @@ function toggleBrokerPanel() {
 
             const visitors = getMergedVisitors();
             if (visitors.length === 0) {
-                list.innerHTML = '<div style="color:#9ca3af;font-size:12px;text-align:center;padding:20px 0;">暂无访客</div>';
+                list.innerHTML = '<div style="color:#9ca3af;font-size:12px;text-align:center;padding:20px 0;">' + t('noVisitors') + '</div>';
                 return;
             }
 
             list.innerHTML = visitors.map(agent => {
-                const name = agent.name || '未命名访客';
+                const name = agent.name || t('unnamedVisitor');
                 const authStatus = agent.authStatus || 'pending';
                 const state = agent.state || 'idle';
                 const statusMap = {
