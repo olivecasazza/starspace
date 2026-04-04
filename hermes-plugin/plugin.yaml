@@ -1,0 +1,13 @@
+name: starspace
+version: "0.1.0"
+description: Push agent state to Star Office UI (Starspace) dashboard
+author: olivecasazza
+requires_env:
+  - STARSPACE_URL
+provides_hooks:
+  - on_session_start
+  - on_session_end
+  - pre_tool_call
+  - post_tool_call
+  - pre_llm_call
+  - post_llm_call
