@@ -18,7 +18,7 @@ from memo_utils import get_yesterday_date_str, sanitize_content, extract_memo_fr
 from store_utils import (
     load_agents_state as _store_load_agents_state,
     save_agents_state as _store_save_agents_state,
-    load_asset_positions as _store_load_asset_positions,
+
     save_asset_positions as _store_save_asset_positions,
     load_asset_defaults as _store_load_asset_defaults,
     save_asset_defaults as _store_save_asset_defaults,
@@ -27,6 +27,7 @@ from store_utils import (
     load_join_keys as _store_load_join_keys,
     save_join_keys as _store_save_join_keys,
 )
+import paperclip_sync
 
 try:
     from PIL import Image
@@ -39,9 +40,10 @@ MEMORY_DIR = os.path.join(os.path.dirname(ROOT_DIR), "memory")
 FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
 FRONTEND_INDEX_FILE = os.path.join(FRONTEND_DIR, "index.html")
 FRONTEND_ELECTRON_STANDALONE_FILE = os.path.join(FRONTEND_DIR, "electron-standalone.html")
-STATE_FILE = os.path.join(ROOT_DIR, "state.json")
-AGENTS_STATE_FILE = os.path.join(ROOT_DIR, "agents-state.json")
-JOIN_KEYS_FILE = os.path.join(ROOT_DIR, "join-keys.json")
+STATE_DIR = os.environ.get("STAR_STATE_DIR") or ROOT_DIR
+STATE_FILE = os.path.join(STATE_DIR, "state.json")
+AGENTS_STATE_FILE = os.path.join(STATE_DIR, "agents-state.json")
+JOIN_KEYS_FILE = os.path.join(STATE_DIR, "join-keys.json")
 FRONTEND_PATH = Path(FRONTEND_DIR)
 ASSET_ALLOWED_EXTS = {".png", ".webp", ".jpg", ".jpeg", ".gif", ".svg", ".avif"}
 ASSET_TEMPLATE_ZIP = os.path.join(ROOT_DIR, "assets-replace-template.zip")
@@ -58,15 +60,14 @@ ROOM_REFERENCE_IMAGE = (
 BG_HISTORY_DIR = os.path.join(ROOT_DIR, "assets", "bg-history")
 HOME_FAVORITES_DIR = os.path.join(ROOT_DIR, "assets", "home-favorites")
 HOME_FAVORITES_INDEX_FILE = os.path.join(HOME_FAVORITES_DIR, "index.json")
-HOME_FAVORITES_MAX = 30
-ASSET_POSITIONS_FILE = os.path.join(ROOT_DIR, "asset-positions.json")
+ASSET_POSITIONS_FILE = os.path.join(STATE_DIR, "asset-positions.json")
 
 # 性能保护：默认关闭“每次打开页面随机换背景”，避免首页首屏被磁盘复制拖慢
 AUTO_ROTATE_HOME_ON_PAGE_OPEN = (os.getenv("AUTO_ROTATE_HOME_ON_PAGE_OPEN", "0").strip().lower() in {"1", "true", "yes", "on"})
 AUTO_ROTATE_MIN_INTERVAL_SECONDS = int(os.getenv("AUTO_ROTATE_MIN_INTERVAL_SECONDS", "60"))
 _last_home_rotate_at = 0
-ASSET_DEFAULTS_FILE = os.path.join(ROOT_DIR, "asset-defaults.json")
-RUNTIME_CONFIG_FILE = os.path.join(ROOT_DIR, "runtime-config.json")
+ASSET_DEFAULTS_FILE = os.path.join(STATE_DIR, "asset-defaults.json")
+RUNTIME_CONFIG_FILE = os.path.join(STATE_DIR, "runtime-config.json")
 
 # Canonical agent states: single source of truth for validation and mapping
 VALID_AGENT_STATES = frozenset({"idle", "writing", "researching", "executing", "syncing", "error"})
@@ -239,7 +240,9 @@ def ensure_electron_standalone_snapshot():
         print(f"[standalone] create failed: {e}")
 
 
-# Initialize state
+# Ensure the state dir exists (STAR_STATE_DIR may point at a mounted volume)
+if STATE_DIR != ROOT_DIR:
+    os.makedirs(STATE_DIR, exist_ok=True)
 if not os.path.exists(STATE_FILE):
     save_state(DEFAULT_STATE)
 ensure_electron_standalone_snapshot()
@@ -1238,6 +1241,7 @@ def health():
         "status": "ok",
         "service": "star-office-ui",
         "timestamp": datetime.now().isoformat(),
+        "paperclipSync": paperclip_sync.status,
     })
 
 
@@ -2098,6 +2102,10 @@ if __name__ == "__main__":
         else:
             print("Security hardening: OK")
     print("=" * 50)
+    if paperclip_sync.start_background_sync(load_agents_state, save_agents_state, state_to_area):
+        print(f"Paperclip sync: ENABLED (base={os.environ.get('PAPERCLIP_API_URL', paperclip_sync.DEFAULT_BASE_URL)})")
+    else:
+        print("Paperclip sync: disabled (set PAPERCLIP_API_KEY to enable)")
 
     app.run(host="0.0.0.0", port=backend_port, debug=False)
 
