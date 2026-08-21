@@ -34,14 +34,19 @@ status = {
 _lock = threading.Lock()
 
 
-def _fetch_json(url, token, timeout=8):
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/json",
-        },
-    )
+def _fetch_json(url, token, host_header=None, timeout=8):
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+    }
+    # Paperclip validates the Host header against its allowed-hosts list
+    # (PAPERCLIP_PUBLIC_URL + localhost); the in-cluster service DNS is
+    # NOT on it, so cluster-internal callers must pin the public host —
+    # same PAPERCLIP_HOST_HEADER convention as the paperclip-deploy
+    # reconcile job.
+    if host_header:
+        headers["Host"] = host_header
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         raw = resp.read().decode("utf-8")
         return json.loads(raw) if raw.strip() else {}
@@ -69,18 +74,18 @@ def _map_state(agent, runtime):
     return "idle", ""
 
 
-def _collect(base_url, token):
+def _collect(base_url, token, host_header=None):
     """Fetch companies -> agents -> runtime-state. Raises on any failure so
     a partial fetch never wipes the office snapshot."""
     entries = []
-    companies = _fetch_json(f"{base_url}/api/companies", token)
+    companies = _fetch_json(f"{base_url}/api/companies", token, host_header)
     if not isinstance(companies, list):
         raise ValueError(f"unexpected /api/companies payload: {type(companies).__name__}")
     for company in companies:
         cid = company.get("id")
         if not cid:
             continue
-        agents = _fetch_json(f"{base_url}/api/companies/{cid}/agents", token)
+        agents = _fetch_json(f"{base_url}/api/companies/{cid}/agents", token, host_header)
         if not isinstance(agents, list):
             raise ValueError(f"unexpected agents payload for company {cid}")
         for agent in agents:
@@ -88,7 +93,7 @@ def _collect(base_url, token):
             if not aid:
                 continue
             try:
-                runtime = _fetch_json(f"{base_url}/api/agents/{aid}/runtime-state", token)
+                runtime = _fetch_json(f"{base_url}/api/agents/{aid}/runtime-state", token, host_header)
             except Exception:
                 runtime = None  # runtime-state is optional enrichment
             state, detail = _map_state(agent, runtime)
@@ -115,10 +120,10 @@ def _collect(base_url, token):
     return entries
 
 
-def sync_once(load_agents, save_agents, state_to_area, base_url, token):
+def sync_once(load_agents, save_agents, state_to_area, base_url, token, host_header=None):
     """One merge pass. On success replaces all paperclip-sourced agents and
     preserves the main Star plus any manually joined agents verbatim."""
-    entries = _collect(base_url, token)
+    entries = _collect(base_url, token, host_header)
     for e in entries:
         e["area"] = state_to_area(e["_state"])
         del e["_state"]
@@ -132,10 +137,10 @@ def sync_once(load_agents, save_agents, state_to_area, base_url, token):
     return len(entries)
 
 
-def _loop(load_agents, save_agents, state_to_area, base_url, token, interval):
+def _loop(load_agents, save_agents, state_to_area, base_url, token, host_header, interval):
     while True:
         try:
-            sync_once(load_agents, save_agents, state_to_area, base_url, token)
+            sync_once(load_agents, save_agents, state_to_area, base_url, token, host_header)
         except Exception as e:  # keep last snapshot on transient failures
             status["lastError"] = str(e)[:200]
         # Python has no interruptible sleep primitive we need here; the
@@ -148,7 +153,10 @@ def start_background_sync(load_agents, save_agents, state_to_area):
     token = (os.environ.get("PAPERCLIP_API_KEY") or "").strip()
     if not token:
         return False
-    base_url = (os.environ.get("PAPERCLIP_API_URL") or DEFAULT_BASE_URL).rstrip("/")
+    # Paperclip's allowed-hosts check rejects the in-cluster service DNS;
+    # default to the public host (same convention as PAPERCLIP_HOST_HEADER
+    # in the paperclip-deploy reconcile job).
+    host_header = (os.environ.get("PAPERCLIP_HOST_HEADER") or "paperclip.casazza.io").strip()
     try:
         interval = max(5, int(os.environ.get("PAPERCLIP_SYNC_INTERVAL", str(DEFAULT_INTERVAL))))
     except ValueError:
@@ -156,7 +164,7 @@ def start_background_sync(load_agents, save_agents, state_to_area):
     status["enabled"] = True
     t = threading.Thread(
         target=_loop,
-        args=(load_agents, save_agents, state_to_area, base_url, token, interval),
+        args=(load_agents, save_agents, state_to_area, base_url, token, host_header, interval),
         daemon=True,
         name="paperclip-sync",
     )
