@@ -153,6 +153,7 @@ def start_background_sync(load_agents, save_agents, state_to_area):
     token = (os.environ.get("PAPERCLIP_API_KEY") or "").strip()
     if not token:
         return False
+    base_url = (os.environ.get("PAPERCLIP_API_URL") or DEFAULT_BASE_URL).rstrip("/")
     # Paperclip's allowed-hosts check rejects the in-cluster service DNS;
     # default to the public host (same convention as PAPERCLIP_HOST_HEADER
     # in the paperclip-deploy reconcile job).
